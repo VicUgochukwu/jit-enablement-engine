@@ -15,38 +15,38 @@ That's it. You can start managing your knowledge base in Claude Code immediately
 ## Architecture
 
 ```
-                    ┌─────────────────────────┐
+                    ┌─────────────────────────-┐
                     │      Claude Code         │
                     │   (PMM manages KB + reps │
-                    │    via natural language)  │
-                    └──────────┬──────────────┘
+                    │    via natural language) │
+                    └──────────┬──────────────-┘
                                │ stdio
-                    ┌──────────▼──────────────┐
+                    ┌──────────▼─────────────-─┐
                     │      MCP Server          │
                     │   16 tools:              │
                     │   KB mgmt (12) +         │
                     │   Rep directory (3) +    │
                     │   Enablement preview (1) │
-                    └──────────┬──────────────┘
+                    └──────────┬────────────-──┘
                                │ filesystem + HTTP sync
-                    ┌──────────▼──────────────┐
+                    ┌──────────▼───────────-───┐
                     │   data/ directory        │
-                    │   ├── knowledge-base.json│  ──── auto-push ────┐
-                    │   ├── feedback-log.json  │                     │
-                    │   └── rep-directory.json │  ──── auto-push ────┤
-                    └──────────┬──────────────┘                     │
-                               │ filesystem                         │
-                    ┌──────────▼──────────────┐          ┌──────────▼──┐
-                    │   Express Webhook Server │◄─────────│  Railway /  │
-                    │   POST /webhook/crm      │  sync    │  Render     │
-                    │   POST /webhook/feedback  │  PUT     │  (remote)   │
-                    │   POST /webhook/telegram  │  /api/kb │             │
-                    │   POST /webhook/call-intel│         └─────────────┘
+                    │   ├── knowledge-base.json│  ──── auto-push ──----──-┐
+                    │   ├── feedback-log.json  │                          │
+                    │   └── rep-directory.json │  ──── auto-push ───----─-┤
+                    └──────────┬───────────-───┘                          │
+                               │ filesystem                               │
+                    ┌──────────▼────────────-──-┐           ┌───────--───-▼─--─┐
+                    │   Express Webhook Server  │◄──────--──│     Railway /    │
+                    │   POST /webhook/crm       │    sync   │     Render       │
+                    │   POST /webhook/feedback  │    PUT    │     (remote)     │
+                    │   POST /webhook/telegram  │  /api/kb  │                  │
+                    │   POST /webhook/call-intel│           └──────────----─---┘
                     │   PUT  /api/kb            │
-                    │   PUT  /api/rep-directory  │
-                    └──────────┬──────────────┘
+                    │   PUT  /api/rep-directory │
+                    └──────────┬────────────--──┘
                                │ HTTP
-                ┌──────────────┼──────────────────┐
+                ┌──────────────┼─────────────────-─┐
                 ▼              ▼                   ▼
         Claude API *      Slack API         Telegram API
         (* optional)
@@ -60,7 +60,7 @@ That's it. You can start managing your knowledge base in Claude Code immediately
 ## Phases
 
 ### Phase 1: Foundation (Zero Credentials)
-Build your knowledge base and register your sales reps using Claude Code. No API keys needed.
+Build your knowledge base and register your sales reps using Claude Code or Cowork. No API keys needed.
 
 ```
 "Add a case study for Acme Corp..."
