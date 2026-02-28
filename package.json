@@ -1,0 +1,32 @@
+{
+  "name": "jit-enablement-engine",
+  "version": "1.0.0",
+  "description": "Self-contained JIT sales enablement engine — MCP server + webhook server in one package",
+  "type": "module",
+  "main": "dist/mcp/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start:server": "node --env-file=.env dist/server/index.js",
+    "start:mcp": "node dist/mcp/index.js",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "express": "^4.21.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "supertest": "^7.0.0",
+    "@types/supertest": "^6.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
