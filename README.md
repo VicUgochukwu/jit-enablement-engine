@@ -1,100 +1,164 @@
-# JIT Sales Enablement Engine
+<h1 align="center">JIT Sales Enablement Engine</h1>
 
-A self-contained sales enablement system that pushes personalized content to reps when CRM deals change stages. No n8n, no GitHub storage, no external workflow tools.
+<p align="center">
+  <strong>Push-based sales enablement triggered by CRM deal stage changes.</strong><br/>
+  MCP server with 16 tools + webhook server. No n8n, no GitHub storage, no external workflow tools.<br/>
+  Reps get the right content at the right time — automatically.
+</p>
 
-## Quick Start
+<p align="center">
+  <img src="https://img.shields.io/badge/typescript-5.7-blue?logo=typescript" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/MCP-16_tools-purple" alt="MCP Tools" />
+  <img src="https://img.shields.io/badge/tests-215_passing-green" alt="Tests" />
+  <img src="https://img.shields.io/badge/CRMs-6_supported-orange" alt="CRMs" />
+  <img src="https://img.shields.io/badge/channels-slack_+_telegram-blue" alt="Channels" />
+</p>
 
-```bash
-git clone <your-repo-url> jit-enablement-engine
-cd jit-enablement-engine
-bash setup.sh
+---
+
+## The Problem
+
+Sales enablement is reactive. Reps dig through Confluence, Notion, or Slack to find the right case study or objection response — if they find it at all. Content exists, but it doesn't reach the rep at the moment they need it.
+
+## The Solution
+
+This engine **pushes** personalized enablement content to reps when CRM deals change stages. A deal moves to "Proposal Sent"? The rep gets a Slack/Telegram DM with relevant case studies, competitor positioning, and objection responses — assembled from your knowledge base and tailored to the deal's industry and competitive context.
+
+```
+CRM deal stage changes → Webhook fires → Engine matches KB content → Rep gets DM
 ```
 
-That's it. You can start managing your knowledge base in Claude Code immediately — no API keys needed for Phase 1.
+No manual lookup. No stale decks. Content finds the rep.
 
-## Architecture
+---
+
+## How It Works
 
 ```
-                    ┌─────────────────────────-┐
-                    │      Claude Code         │
-                    │   (PMM manages KB + reps │
-                    │    via natural language) │
-                    └──────────┬──────────────-┘
-                               │ stdio
-                    ┌──────────▼─────────────-─┐
-                    │      MCP Server          │
-                    │   16 tools:              │
-                    │   KB mgmt (12) +         │
-                    │   Rep directory (3) +    │
-                    │   Enablement preview (1) │
-                    └──────────┬────────────-──┘
-                               │ filesystem + HTTP sync
-                    ┌──────────▼───────────-───┐
-                    │   data/ directory        │
-                    │   ├── knowledge-base.json│  ──── auto-push ──----──-┐
-                    │   ├── feedback-log.json  │                          │
-                    │   └── rep-directory.json │  ──── auto-push ───----─-┤
-                    └──────────┬───────────-───┘                          │
-                               │ filesystem                               │
-                    ┌──────────▼────────────-──-┐           ┌───────--───-▼─--─┐
-                    │   Express Webhook Server  │◄──────--──│     Railway /    │
-                    │   POST /webhook/crm       │    sync   │     Render       │
-                    │   POST /webhook/feedback  │    PUT    │     (remote)     │
-                    │   POST /webhook/telegram  │  /api/kb  │                  │
-                    │   POST /webhook/call-intel│           └──────────----─---┘
-                    │   PUT  /api/kb            │
-                    │   PUT  /api/rep-directory │
-                    └──────────┬────────────--──┘
-                               │ HTTP
-                ┌──────────────┼─────────────────-─┐
-                ▼              ▼                   ▼
-        Claude API *      Slack API         Telegram API
-        (* optional)
+  ┌─────────────────────────┐
+  │      Claude Code        │
+  │  PMM manages KB + reps  │
+  │   via natural language   │
+  └───────────┬─────────────┘
+              │ stdio
+  ┌───────────▼─────────────┐
+  │      MCP Server         │
+  │   16 tools:             │
+  │   KB mgmt (12) +        │
+  │   Rep directory (3) +   │
+  │   Enablement preview (1)│
+  └───────────┬─────────────┘
+              │ filesystem
+  ┌───────────▼─────────────┐        ┌──────────────┐
+  │  Express Webhook Server │◄───────│  Railway /   │
+  │  POST /webhook/crm      │  sync  │  Render      │
+  │  POST /webhook/feedback  │        └──────────────┘
+  │  POST /webhook/telegram  │
+  │  POST /webhook/call-intel│
+  └───────────┬─────────────┘
+              │
+   ┌──────────┼──────────┐
+   ▼          ▼          ▼
+Claude API  Slack API  Telegram API
+(optional)
 ```
 
-**Local mode:** Both MCP server and webhook server share the same `data/` directory.
-**Deployed mode:** The MCP server auto-syncs KB and rep directory changes to your Railway server via `PUT /api/kb` and `PUT /api/rep-directory` (authenticated with a shared secret).
+---
 
-**Claude API is optional.** Without an API key, the engine assembles enablement packages directly from your KB content using template-based formatting. Add an API key to get AI-generated prose.
+## Pipeline
 
-## Phases
+When a CRM webhook fires, the engine runs a 7-step async pipeline:
+
+| Step | What Happens |
+|------|-------------|
+| **1. Parse** | Auto-detect CRM type (HubSpot, Salesforce, Attio, Pipedrive, Close, generic) from payload shape |
+| **2. Enrich** | Apply defaults — industry, competitor, company name from deal fields |
+| **3. Resolve Rep** | Find the right messaging account: CRM field → Rep directory → Slack API lookup → email fallback |
+| **4. Gate** | Block delivery if KB is unconfigured (prevents hallucination — no case studies = no send) |
+| **5. Generate** | Claude API writes personalized content from KB entries, OR template-based matching if no API key |
+| **6. Format** | Block Kit (Slack) or HTML (Telegram) with feedback buttons |
+| **7. Send + Log** | Deliver to rep DM, record delivery with surfaced content for tracking |
+
+---
+
+## Phased Setup
 
 ### Phase 1: Foundation (Zero Credentials)
-Build your knowledge base and register your sales reps using Claude Code or Cowork. No API keys needed.
+Build your knowledge base using Claude Code. No API keys needed.
 
 ```
-"Add a case study for Acme Corp..."
-"Set methodology to MEDDIC..."
-"Add rep Sarah Chen — her Slack ID is U0123ABC, email sarah@team.com"
-"Show me all entries"
+"Add a case study for Acme Corp in the healthcare vertical..."
+"Set methodology to MEDDIC with stage-specific guidance..."
+"Add rep Sarah Chen — Slack ID U0123ABC, email sarah@team.com"
+"Preview what a rep would get for a fintech deal in negotiation stage"
 ```
 
 ### Phase 2: Equip (Messaging Token Required)
-Connect the webhook server to your CRM and messaging platform.
+Connect to your CRM and messaging platform.
 
-1. Add `SLACK_BOT_TOKEN` (or `TELEGRAM_BOT_TOKEN`) to `.env`
-2. Optionally add `ANTHROPIC_API_KEY` for AI-generated prose (without it, the engine uses template-based formatting from your KB)
-3. Start the server: `npm run start:server`
-4. Point your CRM webhook to `http://your-server:3456/webhook/crm`
+```bash
+# Add to .env
+SLACK_BOT_TOKEN=xoxb-your-token    # or TELEGRAM_BOT_TOKEN
+ANTHROPIC_API_KEY=sk-ant-...        # optional — template mode works without it
 
-The engine resolves which rep to message using a resolution chain:
-- CRM payload field → Rep directory lookup → Slack API email lookup (auto-caches) → email fallback
+npm run start:server
+# Point CRM webhook to http://your-server:3456/webhook/crm
+```
 
 ### Phase 3: Listen
-Reps react to content (👍 helpful / 👎 not helpful), reply with field intel, and outcomes get tracked automatically. On Telegram, button clicks show instant visual confirmation (toast + button state change).
+Reps react to content (helpful / not helpful), reply with field intel. Feedback is tracked automatically.
 
 ### Phase 4: Adapt
-Use feedback data to update your KB. Ask Claude Code:
+Use feedback to improve your KB:
 ```
 "How is my content performing?"
 "What field signals have reps sent?"
-"Any content flagged as not helpful?"
+"Which deals that got enablement ended up closing?"
 ```
+
+---
+
+## MCP Tools (16)
+
+### Knowledge Base Management (12)
+
+| Tool | Description |
+|------|-------------|
+| `add_case_study` | Add customer story with industry, segment, metrics, and relevant deal stages |
+| `add_competitor` | Add competitive positioning with differentiators and evidence |
+| `add_objection` | Add objection/response pair mapped to competitors and stages |
+| `set_methodology` | Configure sales methodology (MEDDIC, BANT, Challenger, etc.) |
+| `list_entries` | List all KB content by type with entry counts |
+| `search_entries` | Filter by industry, competitor, or deal stage |
+| `remove_entry` | Remove entry by ID or name match |
+| `upload_document` | Extract structured entries from pasted documents |
+| `get_status` | KB health check — configured status, entry counts, last update |
+| `get_feedback_summary` | Delivery count, reaction breakdown, content performance |
+| `get_outcomes` | Deals that received enablement → won/lost correlation |
+| `get_field_signals` | Rep-submitted field intel over time |
+
+### Rep Directory (3)
+
+| Tool | Description |
+|------|-------------|
+| `add_rep` | Register rep with email, name, Slack ID, Telegram ID |
+| `list_reps` | Show all reps with routing info |
+| `remove_rep` | Remove rep from directory |
+
+### Enablement Preview (1)
+
+| Tool | Description |
+|------|-------------|
+| `generate_enablement` | Preview what a rep would receive for a given deal scenario — no CRM, Slack, or API keys needed |
+
+---
 
 ## Supported CRMs
 
-| CRM | Detection | Stage Field |
-|-----|-----------|-------------|
+Auto-detected from payload shape. No configuration needed.
+
+| CRM | Detection Method | Stage Field |
+|-----|-----------------|-------------|
 | HubSpot | `properties` key | `properties.dealstage` |
 | Salesforce | `StageName` key | `StageName` |
 | Attio | `attributes` key | `attributes.stage` |
@@ -102,45 +166,83 @@ Use feedback data to update your KB. Ask Claude Code:
 | Close | `lead` + `status_label` | `status_label` |
 | Generic | Flat JSON | `deal_stage` |
 
-The engine auto-detects CRM type from payload shape. No configuration needed.
+---
 
-## Scripts
+## Rep Resolution Chain
 
-| Command | Description |
-|---------|-------------|
-| `npm run start:server` | Start the webhook server |
-| `npm run start:mcp` | Start the MCP server (usually via Claude Code) |
-| `npm run build` | Compile TypeScript |
-| `npm run dev` | Watch mode compilation |
-| `npm test` | Run all tests |
-| `npm run test:watch` | Watch mode tests |
+When a webhook fires, the engine finds the right rep through a fallback chain:
+
+```
+1. CRM field         — payload includes Slack/Telegram ID directly
+       ↓ not found
+2. Rep directory     — lookup by email in rep-directory.json
+       ↓ not found
+3. Slack API         — users.lookupByEmail (auto-caches result)
+       ↓ not found
+4. Email fallback    — uses rep's email address
+       ↓ not found (Telegram only)
+5. PMM fallback      — sends to PMM's Telegram chat
+```
+
+---
+
+## Message Format
+
+**Slack** — Block Kit with structured sections:
+```
+┌─────────────────────────────────┐
+│  JIT Enablement Alert           │
+│  Deal: Acme Corp                │
+│  Stage: Proposal Sent           │
+│  Industry: Healthcare           │
+├─────────────────────────────────┤
+│  [Personalized enablement       │
+│   content from KB entries]      │
+├─────────────────────────────────┤
+│  👍 Helpful    👎 Not helpful   │
+│                                 │
+│  Reply in thread with field     │
+│  intel or signals               │
+└─────────────────────────────────┘
+```
+
+**Telegram** — HTML-formatted with inline keyboard buttons and visual confirmation on click.
+
+---
+
+## Testing
+
+```bash
+npm test        # 215 tests, 4 test files
+npm run test:watch
+```
+
+| Test File | Coverage |
+|-----------|----------|
+| `pipeline.test.ts` | CRM parsing, stage classification, rep resolution, prompt building, message formatting |
+| `mcp.test.ts` | All 16 MCP tools with various inputs |
+| `server.test.ts` | HTTP routes, auth, validation, sync endpoints |
+| `feedback.test.ts` | Slack/Telegram callbacks, thread replies, call intel parsing |
+
+---
 
 ## Deployment
 
 ### Railway (Recommended)
 
-Railway gives you a permanent public URL, auto-HTTPS, persistent storage, and automatic restarts — no server management.
-
-**→ [Full Railway deployment guide](docs/deploy-railway.md)** — takes ~10 minutes.
-
-The short version:
-1. Push repo to GitHub
-2. Create a Railway project → Deploy from GitHub repo
-3. Set env vars (`CHANNEL`, `SLACK_BOT_TOKEN` or `TELEGRAM_BOT_TOKEN`, `DATA_DIR=/app/data`)
-4. Add a persistent volume mounted at `/app/data`
-5. Generate a public domain
-6. Point your CRM webhook to `https://your-app.up.railway.app/webhook/crm`
-
-### Local Testing
-
-For local development and testing before deploying:
-
 ```bash
-npm run start:server
-# In another terminal:
-npx localtunnel --port 3456
-# Use the tunnel URL as your CRM webhook endpoint
+# 1. Push to GitHub
+# 2. Create Railway project → Deploy from GitHub
+# 3. Set env vars:
+#    CHANNEL=slack (or telegram)
+#    SLACK_BOT_TOKEN=xoxb-...
+#    DATA_DIR=/app/data
+# 4. Add persistent volume at /app/data
+# 5. Generate public domain
+# 6. Point CRM webhook to https://your-app.up.railway.app/webhook/crm
 ```
+
+See [docs/deploy-railway.md](docs/deploy-railway.md) for the full guide (~10 minutes).
 
 ### Docker
 
@@ -153,66 +255,48 @@ docker run -p 3456:3456 \
   jit-enablement
 ```
 
+### Local Testing
+
+```bash
+npm run start:server
+npx localtunnel --port 3456
+# Use tunnel URL as CRM webhook endpoint
+```
+
+---
+
+## Security
+
+- **Context gate** — blocks delivery if KB has no case studies (prevents hallucination)
+- **Prompt injection defense** — deal field values treated as plain text, never executed
+- **Body size limits** — 100KB JSON, 500 char deal names, 10KB call intel summaries
+- **Sync auth** — Bearer token validation for KB sync endpoints
+- **Error isolation** — global handler never leaks stack traces
+- **Unfurl disabled** — Slack messages don't preview external links
+
+---
+
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `ANTHROPIC_API_KEY` | No | Claude API key. Optional — without it, enablement uses template-based formatting from your KB content |
-| `SLACK_BOT_TOKEN` | Phase 2 (Slack) | Slack bot token with `chat:write`, `users:read.email` scopes |
-| `TELEGRAM_BOT_TOKEN` | Phase 2 (Telegram) | Telegram bot token from BotFather |
+| `ANTHROPIC_API_KEY` | No | Claude API for AI prose. Without it, uses template-based formatting |
+| `SLACK_BOT_TOKEN` | Phase 2 (Slack) | `chat:write`, `users:read.email` scopes |
+| `TELEGRAM_BOT_TOKEN` | Phase 2 (Telegram) | From BotFather |
 | `CHANNEL` | No | `slack` (default) or `telegram` |
-| `PORT` | No | Server port — auto-set by Railway/Render (takes priority) |
-| `WEBHOOK_PORT` | No | Server port for local use (default: 3456) |
+| `WEBHOOK_PORT` | No | Server port (default: 3456, Railway overrides with PORT) |
 | `PMM_SLACK_ID` | No | Slack user ID for PMM notifications |
 | `PMM_TELEGRAM_CHAT_ID` | No | Telegram chat ID for PMM notifications |
 | `DATA_DIR` | No | Path to data directory (default: `./data`) |
-| `SYNC_URL` | No (MCP only) | Railway/remote server URL for automatic KB sync |
-| `SYNC_SECRET` | No | Shared secret for authenticating sync requests (set on both local + server) |
+| `SYNC_URL` | No | Remote server URL for KB auto-sync |
+| `SYNC_SECRET` | No | Shared secret for sync authentication |
 
-## Testing
+---
 
-```bash
-npm test
-```
+## Author
 
-215 tests across 4 test files covering the full pipeline, feedback parsing, server routes (including sync), and data layer.
+Built by **[Victor Ugochukwu](https://github.com/VicUgochukwu)** — a PMM who builds production GTM tools with code.
 
-## MCP Tools (16)
+## License
 
-### Knowledge Base (12 tools)
-| Tool | Description |
-|------|-------------|
-| `add_case_study` | Add a customer success story (with optional resource links) |
-| `add_competitor` | Add competitor positioning (with optional resource links) |
-| `add_objection` | Add an objection and recommended response to the library |
-| `set_methodology` | Set sales methodology (MEDDIC, BANT, etc.) |
-| `list_entries` | List all KB content (case studies, competitors, objections, methodology) |
-| `search_entries` | Search KB by industry, competitor, or stage |
-| `remove_entry` | Remove a KB entry by ID or name |
-| `upload_document` | Extract content from pasted documents |
-| `get_status` | Check system health and KB stats |
-| `get_feedback_summary` | Summarize rep feedback and content performance |
-| `get_outcomes` | Show deal outcomes correlated with content |
-| `get_field_signals` | See what reps are reporting from the field |
-
-### Enablement Preview (1 tool)
-| Tool | Description |
-|------|-------------|
-| `generate_enablement` | Preview what a rep would receive for a given deal scenario — no CRM, Slack, or API keys needed |
-
-### Rep Directory (3 tools)
-| Tool | Description |
-|------|-------------|
-| `add_rep` | Register a sales rep (email, name, Slack ID, Telegram ID) |
-| `list_reps` | Show all registered reps and their routing info |
-| `remove_rep` | Remove a rep from the directory |
-
-## Rep Resolution Chain
-
-When a CRM webhook fires, the engine needs to know which messaging account to send to. It resolves this automatically:
-
-1. **CRM field** — checks if the payload includes a Slack/Telegram ID directly
-2. **Rep directory** — looks up the rep's email in `data/rep-directory.json`
-3. **Slack API** — calls `users.lookupByEmail` and auto-caches the result back to the directory
-4. **Email fallback** — uses the rep's email address as a last resort
-5. **PMM fallback** (Telegram only) — sends to PMM if no rep-specific ID found
+MIT
